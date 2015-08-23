@@ -1,20 +1,14 @@
 /*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
+ * Caroline Pessoa Caetano - 408247
+ * Henrique Squinello      - 408352
+ * Trabalho 1 - Sistemas Distribuídos
  */
 
-/**
- * @author carol_000
- */
-
-import java.util.*;
-import java.net.*;
 import java.io.*;
+import java.net.DatagramPacket;
+import java.net.DatagramSocket;
+import java.util.*;
 
-/**
- * @author carol_000
- */
 public class SDThread extends Thread {
     //Keeps track of every message received
     private List<Pair<String, Integer>> messageList;
@@ -67,7 +61,8 @@ public class SDThread extends Thread {
                     s.send(new DatagramPacket(serialize(outMessage), serialize(outMessage).length,
                             s.getLocalAddress(), s.getLocalPort()));
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    System.out.println("Log: Erro no envio de mensagem, thread " + pID);
+                    System.out.println("Log: Mensagem:" + outMessage.getMessage());
                 }
             }
         }
@@ -85,21 +80,18 @@ public class SDThread extends Thread {
         Pair<String, Integer> ackMessage = new Pair<String, Integer>("ACK", (Integer) message.getId());
 
         for (DatagramSocket s : clientList) {
-            //Send ack message to every client connected to this process
+            //Send ack message to every client connected to this process, including itself
             try {
                 s.send(new DatagramPacket(serialize(ackMessage), serialize(ackMessage).length,
                         s.getLocalAddress(), s.getLocalPort()));
             } catch (IOException e) {
-                e.printStackTrace();
+                System.out.println("Log: Erro no envio de ACK, thread " + pID);
             }
         }
 
         //Insert the message on the list and reorder it
         messageList.add(message);
         Collections.sort(messageList, mIDComparator);
-
-        //Keep track of how many messages are left
-        messagesReceived++;
 
         return;
     }
@@ -118,12 +110,14 @@ public class SDThread extends Thread {
                 Pair<String, Integer> ack = ackList.remove(i);
                 ack.setId(ack.getId() + 1);
                 ackList.add(i, ack);
+
                 //Since the ack has been found,
                 //check the list to see if any messages can be released or not
                 checkAck();
                 return;
             }
         }
+
         //mID not found, add it to the list and reorder
         ackList.add(new Pair<String, Integer>(mID, 1));
         Collections.sort(ackList, ackComparator);
@@ -132,6 +126,7 @@ public class SDThread extends Thread {
 
     public void checkAck() {
         boolean stop = false;
+
         //Since both lists are ordered, we can just check to see
         //if the first message can be released. If so, repeat
         //the process, releasing messages with enough ACKs
@@ -152,15 +147,13 @@ public class SDThread extends Thread {
     public void run() {
         int messagesSent = 0;
         byte[] data = new byte[1000000];
-        System.out.println("Ahi");
+        //System.out.println("Log: Thread " + pID + " iniciada");
 
         DatagramPacket packet = new DatagramPacket(data, 1000000);
 
         while (true) {
             //If we have already sent and received every message
-            if (messagesReceived == (int) Math.pow(totalMessagesToSend * clientList.size(), 2)) {
-                for(DatagramSocket ds : clientList)
-                    ds.close();
+            if (messagesReceived == (int) Math.pow(totalMessagesToSend * clientList.size(), 2) + (clientList.size() - 1)) {
                 return;
             }
 
@@ -168,7 +161,6 @@ public class SDThread extends Thread {
             if (messagesSent != totalMessagesToSend) {
                 send("Message " + messagesSent + " sent by thread " + pID);
                 messagesSent++;
-                System.out.println("sending");
             }
 
             //Listen to own socket for data
@@ -177,11 +169,13 @@ public class SDThread extends Thread {
                 if (packet.getLength() != 0) {
                     try {
                         Pair<String, Integer> m = (Pair<String, Integer>) deserialize(packet.getData());
-                        if (m.getMessage().equals("ACK"))
+                        if (m.getMessage().equals("ACK")) {
                             ack(m);
-                        else {
+                        } else {
                             receive(m);
                         }
+                        //Keep track of how many messages are left
+                        messagesReceived++;
                     } catch (Exception e) {
                         System.out.println("Log: stream header.");
                     }
